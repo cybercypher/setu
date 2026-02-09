@@ -1,0 +1,83 @@
+[package]
+name = "setu"
+version = "0.1.3"
+edition = "2021"
+description = "CardDAV bridge for Google Contacts (with optional system tray)"
+license = "AGPL-3.0-or-later"
+
+[lib]
+name = "setu_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "setu"
+path = "src/main.rs"
+
+[features]
+default = ["gui"]
+gui = ["dep:tray-icon", "dep:tao", "dep:eframe"]
+
+[dependencies]
+# ── Async Runtime ──────────────────────────────────────────────
+tokio  = { version = "1", features = ["full"] }
+
+# ── Web / CardDAV Server ───────────────────────────────────────
+axum   = { version = "0.8", features = ["macros"] }
+hyper  = { version = "1", features = ["full"] }
+http   = "1"
+http-body-util = "0.1"
+tower         = { version = "0.5", features = ["util"] }
+tower-service = "0.3"
+
+# ── Google People API + OAuth2 ─────────────────────────────────
+google-people1  = "7"
+yup-oauth2      = "12"
+hyper-rustls     = { version = "0.27", features = ["http2", "ring", "webpki-tokio"] }
+rustls           = { version = "0.23", features = ["ring"] }
+hyper-util       = { version = "0.1", features = ["client", "client-legacy", "http2", "tokio", "server-auto"] }
+
+# ── TLS / Certificate Generation ─────────────────────────────────
+rcgen          = { version = "0.14", default-features = false, features = ["ring", "pem"] }
+tokio-rustls   = "0.26"
+rustls-pemfile = "2"
+
+# ── Database ───────────────────────────────────────────────────
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+
+# ── System Tray + Settings GUI (optional, enable with "gui" feature) ──
+tray-icon = { version = "0.19", optional = true }
+tao       = { version = "0.30", optional = true }
+eframe    = { version = "0.29", default-features = false, features = ["glow", "default_fonts"], optional = true }
+
+# ── Serialization ─────────────────────────────────────────────
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# ── Platform Directories ──────────────────────────────────────
+dirs = "5"
+
+# ── Utilities ─────────────────────────────────────────────────
+uuid    = { version = "1", features = ["v4"] }
+anyhow  = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+open    = "5"
+base64  = "0.22"
+chrono  = { version = "0.4", features = ["serde"] }
+percent-encoding = "2"
+rand    = "0.8"
+
+# ── OS Keyring ───────────────────────────────────────────────
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
+
+[build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+strip = true
+lto   = true
+opt-level = "s"   # optimize for binary size

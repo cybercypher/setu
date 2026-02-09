@@ -1,0 +1,13 @@
+# Build targets:
+#   cargo build --release                                    → Linux (native)
+#   cargo build --release --target x86_64-pc-windows-gnu     → Windows (cross-compile)
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+
+# rusqlite's bundled SQLite needs a C compiler for the Windows target.
+# The setup_wsl.sh script ensures mingw-w64 is installed.
+[env]
+CC_x86_64_pc_windows_gnu  = "x86_64-w64-mingw32-gcc"
+CXX_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-g++"
+AR_x86_64_pc_windows_gnu  = "x86_64-w64-mingw32-ar"

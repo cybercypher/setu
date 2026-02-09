@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Setu WiX installer source — for use with wixl (msitools) on Linux.
+  Build: wixl -v -D Version=0.1.2 -o setu.msi setu.wxs
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+
+  <Product Id="*"
+           Name="Setu"
+           Language="1033"
+           Version="$(var.Version)"
+           Manufacturer="Setu Dev"
+           UpgradeCode="550e8400-e29b-41d4-a716-446655440000">
+
+    <Package InstallerVersion="200"
+             Compressed="yes"
+             InstallScope="perUser"
+             Description="Setu — CardDAV bridge for Google Contacts"
+             Comments="Installs Setu to LocalAppData" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ── Major Upgrade (manual — wixl lacks AllowSameVersionUpgrades) ── -->
+    <!-- Detect downgrades (version > ours): block install. -->
+    <!-- Detect upgrades or same-version reinstalls: uninstall old first. -->
+    <Upgrade Id="550e8400-e29b-41d4-a716-446655440000">
+      <UpgradeVersion Minimum="$(var.Version)" IncludeMinimum="no"
+                      OnlyDetect="yes" Property="DOWNGRADE_DETECTED" />
+      <UpgradeVersion Minimum="0.0.0" Maximum="$(var.Version)"
+                      IncludeMinimum="yes" IncludeMaximum="yes"
+                      Property="UPGRADE_DETECTED" />
+    </Upgrade>
+    <Condition Message="A newer version of Setu is already installed.">
+      NOT DOWNGRADE_DETECTED
+    </Condition>
+
+    <!-- ── Properties: full paths to system executables ───────────── -->
+    <Property Id="TASKKILL" Value="C:\Windows\System32\taskkill.exe" />
+    <Property Id="CLEANCMD1" Value="C:\Windows\System32\cmd.exe" />
+    <Property Id="CLEANCMD2" Value="C:\Windows\System32\cmd.exe" />
+    <Property Id="CLEANCMD3" Value="C:\Windows\System32\cmd.exe" />
+    <Property Id="LAUNCHCMD" Value="C:\Windows\System32\cmd.exe" />
+
+    <!-- ── Kill running Setu before install/upgrade ──────────────── -->
+    <CustomAction Id="KillSetu"
+                  Property="TASKKILL"
+                  ExeCommand="/F /IM setu.exe /T"
+                  Return="ignore" />
+
+    <!-- ── Uninstall-only cleanup: wipe keyring tokens ───────────── -->
+    <CustomAction Id="WipeTokens"
+                  Property="CLEANCMD1"
+                  ExeCommand="/c cmdkey /delete:Setu_Google_Token"
+                  Return="ignore" />
+
+    <!-- ── Uninstall-only cleanup: delete %APPDATA%\setu ─────────── -->
+    <CustomAction Id="DeleteAppData"
+                  Property="CLEANCMD2"
+                  ExeCommand='/c rmdir /s /q "%APPDATA%\setu"'
+                  Return="ignore" />
+
+    <!-- ── Uninstall-only cleanup: delete %LOCALAPPDATA%\setu ────── -->
+    <CustomAction Id="DeleteLocalAppData"
+                  Property="CLEANCMD3"
+                  ExeCommand='/c rmdir /s /q "%LOCALAPPDATA%\setu"'
+                  Return="ignore" />
+
+    <!-- ── Launch Setu after install/upgrade ──────────────────────── -->
+    <CustomAction Id="LaunchSetu"
+                  Property="LAUNCHCMD"
+                  ExeCommand='/c start "" "[INSTALLDIR]setu.exe"'
+                  Return="asyncNoWait" />
+
+    <!-- ── Install Sequence ──────────────────────────────────────── -->
+    <InstallExecuteSequence>
+      <Custom Action="KillSetu" Before="InstallValidate" />
+      <RemoveExistingProducts After="InstallInitialize" />
+      <Custom Action="WipeTokens" After="RemoveExistingProducts">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="DeleteAppData" After="WipeTokens">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="DeleteLocalAppData" After="DeleteAppData">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="LaunchSetu" After="InstallFinalize">NOT REMOVE</Custom>
+    </InstallExecuteSequence>
+
+    <!-- ── Directory Layout ──────────────────────────────────────── -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="INSTALLDIR" Name="Setu" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+
+    <!-- ── Files ─────────────────────────────────────────────────── -->
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="MainExe" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+        <File Id="SetuExe"
+              Name="setu.exe"
+              Source="target/x86_64-pc-windows-gnu/release/setu.exe"
+              KeyPath="yes" />
+
+        <!-- Auto-start on login (HKCU\...\Run) -->
+        <RegistryValue Root="HKCU"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="Setu"
+                       Type="string"
+                       Value="[INSTALLDIR]setu.exe" />
+      </Component>
+
+    </DirectoryRef>
+
+    <!-- ── Start Menu Shortcut ─────────────────────────────────── -->
+    <DirectoryRef Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+        <Shortcut Id="SetuShortcut"
+                  Name="Setu"
+                  Description="CardDAV bridge for Google Contacts"
+                  Target="[INSTALLDIR]setu.exe"
+                  WorkingDirectory="INSTALLDIR" />
+        <RemoveFolder Id="RemoveStartMenuEntry" On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Setu"
+                       Name="StartMenuShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- ── Feature ───────────────────────────────────────────────── -->
+    <Feature Id="Complete" Title="Setu" Level="1">
+      <ComponentRef Id="MainExe" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+  </Product>
+</Wix>

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Setu
+Comment=CardDAV bridge for Google Contacts
+Exec=setu
+Icon=setu
+Categories=Network;ContactManagement;
+StartupNotify=true

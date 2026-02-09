@@ -1,0 +1,12 @@
+target/
+
+# MSI installers
+*.msi
+
+# AppImage artifacts
+*.AppImage
+Setu.AppDir/
+appimagetool-*
+
+# Vim swap files
+.*.swp
