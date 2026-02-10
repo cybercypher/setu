@@ -22,10 +22,7 @@
 
     <!-- ── Major Upgrade (manual — wixl lacks AllowSameVersionUpgrades) ── -->
     <!-- Detect downgrades (version > ours): block install. -->
-    <!-- Detect upgrades or same-version reinstalls. Late removal pattern:
-         new files are installed first (overwriting in-place via same component
-         GUID), then RemoveExistingProducts cleans up the old MSI registration
-         after InstallFinalize.  Avoids the gap where setu.exe is missing. -->
+    <!-- Detect upgrades or same-version reinstalls: uninstall old first. -->
     <Upgrade Id="550e8400-e29b-41d4-a716-446655440000">
       <UpgradeVersion Minimum="$(var.Version)" IncludeMinimum="no"
                       OnlyDetect="yes" Property="DOWNGRADE_DETECTED" />
@@ -38,16 +35,16 @@
     </Condition>
 
     <!-- ── Properties: full paths to system executables ───────────── -->
-    <Property Id="TASKKILL" Value="C:\Windows\System32\taskkill.exe" />
+    <Property Id="KILLCMD" Value="C:\Windows\System32\cmd.exe" />
     <Property Id="CLEANCMD1" Value="C:\Windows\System32\cmd.exe" />
     <Property Id="CLEANCMD2" Value="C:\Windows\System32\cmd.exe" />
     <Property Id="CLEANCMD3" Value="C:\Windows\System32\cmd.exe" />
     <Property Id="LAUNCHCMD" Value="C:\Windows\System32\cmd.exe" />
 
-    <!-- ── Kill running Setu before install/upgrade ──────────────── -->
+    <!-- ── Kill running Setu + wait for file lock release ──────── -->
     <CustomAction Id="KillSetu"
-                  Property="TASKKILL"
-                  ExeCommand="/F /IM setu.exe /T"
+                  Property="KILLCMD"
+                  ExeCommand='/c taskkill /F /IM setu.exe /T &amp; timeout /t 2 /nobreak >nul'
                   Return="ignore" />
 
     <!-- ── Uninstall-only cleanup: wipe keyring tokens ───────────── -->
@@ -77,7 +74,7 @@
     <!-- ── Install Sequence ──────────────────────────────────────── -->
     <InstallExecuteSequence>
       <Custom Action="KillSetu" Before="InstallValidate" />
-      <RemoveExistingProducts After="InstallFinalize" />
+      <RemoveExistingProducts After="InstallInitialize" />
       <Custom Action="WipeTokens" After="RemoveExistingProducts">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="DeleteAppData" After="WipeTokens">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="DeleteLocalAppData" After="DeleteAppData">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
