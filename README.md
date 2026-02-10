@@ -4,7 +4,7 @@
 
 Setu syncs your Google Contacts and serves them over CardDAV, so any CardDAV-compatible client. I built this for OpenBubbles since I could not get google contacts to work.
 
-- Runs in the system tray on Windows and Linux
+- Runs in the system tray on Windows and Linux (untested / WIP)
 - Syncs incrementally via the Google People API
 - Serves contacts as vCard 3.0 over a local CardDAV server
 - On-demand phone number search — queries Google in real time for numbers not in the local cache
