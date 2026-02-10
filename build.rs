@@ -2,26 +2,13 @@ use std::process::Command;
 
 fn main() {
     // Git short hash — ties every binary to its exact source commit
-    let commit = Command::new("git")
+    let build_id = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_else(|| "unknown".into());
-
-    // Append "-dirty" if the working tree has uncommitted changes
-    let dirty = Command::new("git")
-        .args(["diff", "--quiet", "HEAD"])
-        .status()
-        .map(|s| !s.success())
-        .unwrap_or(false);
-
-    let build_id = if dirty {
-        format!("{commit}-dirty")
-    } else {
-        commit
-    };
 
     println!("cargo:rustc-env=SETU_BUILD_ID={build_id}");
     // Only re-run when the HEAD commit changes (not on every file edit)
