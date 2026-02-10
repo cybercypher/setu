@@ -63,17 +63,18 @@ jobs:
             -o "setu-${{ steps.version.outputs.version }}.msi" \
             setu.wxs
 
-      - name: Stage Windows artifacts
+      - name: Zip Windows artifacts
         run: |
           mkdir -p staging
-          cp target/x86_64-pc-windows-gnu/release/setu.exe staging/
-          cp setu-${{ steps.version.outputs.version }}.msi staging/
+          zip -j "staging/setu-${{ steps.version.outputs.version }}.zip" \
+            target/x86_64-pc-windows-gnu/release/setu.exe \
+            setu-${{ steps.version.outputs.version }}.msi
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
-          path: staging/*
+          path: staging/*.zip
 
   build-linux:
     name: Build Linux (AppImage)
