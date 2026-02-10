@@ -47,13 +47,16 @@ fi
 echo "==> Building AppImage with bundled dependencies..."
 rm -rf Setu.AppDir
 
+# linuxdeploy requires icon filename to match Icon= entry in desktop file.
+cp assets/icon_preview.png setu.png
+
 OUTPUT="${APPIMAGE_OUT}" \
 DEPLOY_GTK_VERSION=3 \
 ./"${LINUXDEPLOY}" \
     --appdir Setu.AppDir \
     --executable "${RELEASE_DIR}/setu" \
     --desktop-file setu.desktop \
-    --icon-file assets/icon_preview.png \
+    --icon-file setu.png \
     --plugin gtk \
     --output appimage
 
