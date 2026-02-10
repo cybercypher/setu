@@ -4,6 +4,8 @@
 //!   setu              → start (tray on Windows/GUI builds, headless otherwise)
 //!   setu --settings   → open the settings GUI (requires "gui" feature)
 //!   setu --headless   → run without tray (CardDAV server + sync only)
+//!   setu --install    → install systemd user service (Linux only)
+//!   setu --uninstall  → remove systemd user service (Linux only)
 
 // Hide the console window on Windows release builds.
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
@@ -21,6 +23,8 @@ mod tray;
 mod sync;
 mod vcard;
 
+#[cfg(target_os = "linux")]
+use anyhow::Context;
 use std::sync::Mutex;
 
 fn main() -> anyhow::Result<()> {
@@ -66,6 +70,16 @@ fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     #[allow(unused_variables)]
     let headless = args.iter().any(|a| a == "--headless");
+
+    // --install / --uninstall manage the systemd user service (Linux only).
+    #[cfg(target_os = "linux")]
+    if args.iter().any(|a| a == "--install") {
+        return install_systemd_service();
+    }
+    #[cfg(target_os = "linux")]
+    if args.iter().any(|a| a == "--uninstall") {
+        return uninstall_systemd_service();
+    }
 
     // --show-carddav-password prints the CardDAV Basic Auth password and exits.
     if args.iter().any(|a| a == "--show-carddav-password") {
@@ -130,6 +144,21 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             tracing::info!("setup complete — continuing startup");
+
+            // On Linux, install and start the systemd user service so Setu
+            // runs in the background and auto-starts on login.
+            #[cfg(target_os = "linux")]
+            {
+                if let Err(e) = install_systemd_service() {
+                    tracing::warn!("could not install systemd service: {e:#}");
+                } else {
+                    eprintln!("Setu is now running as a background service.");
+                    eprintln!("  Status:  systemctl --user status setu");
+                    eprintln!("  Logs:    journalctl --user -u setu -f");
+                    eprintln!("  Stop:    systemctl --user stop setu");
+                    return Ok(());
+                }
+            }
         }
 
         #[cfg(not(feature = "gui"))]
@@ -267,11 +296,12 @@ fn main() -> anyhow::Result<()> {
 
         // Tray icon on the main thread (blocking).
         tracing::info!("starting system tray");
-        if let Err(e) = tray::run_tray(action_tx) {
-            tracing::error!("tray failed to start: {e:#}");
+        match tray::run_tray(action_tx) {
+            Ok(()) => return Ok(()), // event loop ran until user quit
+            Err(e) => {
+                tracing::warn!("tray failed to start: {e:#} — falling back to headless mode");
+            }
         }
-
-        return Ok(());
     }
 
     // Headless mode: block on Ctrl+C.
@@ -384,4 +414,90 @@ fn ensure_single_instance() -> Option<()> {
 #[cfg(not(target_os = "windows"))]
 fn ensure_single_instance() -> Option<()> {
     None
+}
+
+// ── Systemd user service management (Linux only) ─────────────────────
+
+#[cfg(target_os = "linux")]
+fn systemd_service_path() -> anyhow::Result<std::path::PathBuf> {
+    let home = dirs::home_dir().context("cannot resolve home directory")?;
+    let dir = home.join(".config/systemd/user");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir.join("setu.service"))
+}
+
+#[cfg(target_os = "linux")]
+fn install_systemd_service() -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    let exe = std::env::current_exe().context("cannot resolve current executable")?;
+    let exe_path = exe.display();
+
+    let unit = format!(
+        "[Unit]\n\
+         Description=Setu — CardDAV bridge for Google Contacts\n\
+         After=network-online.target\n\
+         \n\
+         [Service]\n\
+         Type=simple\n\
+         ExecStart={exe_path} --headless\n\
+         Restart=on-failure\n\
+         RestartSec=5\n\
+         \n\
+         [Install]\n\
+         WantedBy=default.target\n"
+    );
+
+    let service_path = systemd_service_path()?;
+    std::fs::write(&service_path, &unit)
+        .with_context(|| format!("writing {}", service_path.display()))?;
+
+    tracing::info!("installed systemd service at {}", service_path.display());
+
+    // Reload systemd, enable, and start the service.
+    let status = std::process::Command::new("systemctl")
+        .args(["--user", "daemon-reload"])
+        .status();
+    if let Err(e) = status {
+        tracing::warn!("systemctl daemon-reload failed: {e}");
+    }
+
+    let status = std::process::Command::new("systemctl")
+        .args(["--user", "enable", "--now", "setu"])
+        .status()
+        .context("failed to enable setu service")?;
+
+    if status.success() {
+        tracing::info!("setu service enabled and started");
+        eprintln!("Setu service installed and started.");
+    } else {
+        tracing::warn!("systemctl enable --now exited with {status}");
+        eprintln!("Service file installed but could not start. Check: systemctl --user status setu");
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn uninstall_systemd_service() -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    // Stop and disable.
+    let _ = std::process::Command::new("systemctl")
+        .args(["--user", "disable", "--now", "setu"])
+        .status();
+
+    let service_path = systemd_service_path()?;
+    if service_path.exists() {
+        std::fs::remove_file(&service_path)
+            .with_context(|| format!("removing {}", service_path.display()))?;
+        tracing::info!("removed {}", service_path.display());
+    }
+
+    let _ = std::process::Command::new("systemctl")
+        .args(["--user", "daemon-reload"])
+        .status();
+
+    eprintln!("Setu service uninstalled.");
+    Ok(())
 }
