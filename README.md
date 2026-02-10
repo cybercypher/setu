@@ -4,36 +4,46 @@
 
 Setu syncs your Google Contacts and serves them over CardDAV, so any CardDAV-compatible client. I built this for OpenBubbles since I could not get google contacts to work.
 
-- Runs in the system tray on Windows and Linux (untested / WIP)
+- **Windows**: system tray with MSI installer (auto-start on login)
+- **Linux**: runs as a systemd user service with AppImage distribution
 - Syncs incrementally via the Google People API
 - Serves contacts as vCard 3.0 over a local CardDAV server
 - On-demand phone number search — queries Google in real time for numbers not in the local cache
 - All data encrypted at rest with SQLCipher (AES-256)
-- Credentials stored in the OS keyring
+- Credentials stored in the OS keyring (falls back to file-based vault if no keyring service is available)
 
 ## Installation
 
-### From MSI (recommended)
+### Windows — MSI (recommended)
 
-Download or build `setu-0.1.2.msi` and double-click to install. The installer:
+Download the latest `setu-<version>.msi` from [Releases](https://github.com/cybercypher/setu/releases) and double-click to install. The installer:
 
 - Installs `setu.exe` to `%LOCALAPPDATA%\Setu\`
 - Registers auto-start on login (HKCU Run key)
 - Launches Setu immediately after install
 - On uninstall, cleans up all data and credentials
 
-### AppImage (Linux)
+### Linux — AppImage
 
-> **Note:** Linux support is currently untested.
-
-Download or build `Setu-x86_64.AppImage`, then:
+Download the latest `Setu-<version>-x86_64.AppImage` from [Releases](https://github.com/cybercypher/setu/releases), then:
 
 ```bash
-chmod +x Setu-x86_64.AppImage
-./Setu-x86_64.AppImage
+chmod +x Setu-*-x86_64.AppImage
+./Setu-*-x86_64.AppImage
 ```
 
-The AppImage is a self-contained executable — no installation needed. On first run the settings window opens for Google Cloud credentials.
+The AppImage bundles all dependencies (GTK, D-Bus, etc.) — no system packages required. On first run the settings window opens for Google Cloud credentials. After setup, Setu automatically installs itself as a **systemd user service** that runs in the background and auto-starts on login.
+
+```bash
+# Service management
+systemctl --user status setu      # check status
+systemctl --user restart setu     # restart
+journalctl --user -u setu -f      # view logs
+
+# Manual install/uninstall
+./Setu-*-x86_64.AppImage --install
+./Setu-*-x86_64.AppImage --uninstall
+```
 
 ### From source
 
@@ -159,6 +169,8 @@ All Windows apps (Outlook, CalDav Synchronizer, browsers) trust the certificate 
 | `--settings` | Open the settings GUI and exit |
 | `--headless` | Run without the tray (server + sync only) |
 | `--show-carddav-password` | Print the CardDAV Basic Auth credentials and exit |
+| `--install` | Install systemd user service (Linux only) |
+| `--uninstall` | Remove systemd user service (Linux only) |
 
 ## Configuration
 
@@ -175,21 +187,33 @@ The client secret is stored in the OS keyring, not in the config file.
 
 ## Data Files
 
+**Windows** (`%APPDATA%\setu\`):
+
 | Path | Description |
 |---|---|
-| `%APPDATA%\setu\config.json` | Configuration |
-| `%APPDATA%\setu\setu.db` | Encrypted contact database (SQLCipher) |
-| `%APPDATA%\setu\oauth_token.json` | Cached OAuth token |
-| `%APPDATA%\setu\setu.log` | Runtime logs |
-| `%APPDATA%\setu\ca.crt` / `ca.key` | Local CA (created when HTTPS is enabled) |
-| `%APPDATA%\setu\server.crt` / `server.key` | Server certificate signed by local CA |
-| `%LOCALAPPDATA%\Setu\setu.exe` | Installed binary |
+| `config.json` | Configuration |
+| `setu.db` | Encrypted contact database (SQLCipher) |
+| `oauth_token.json` | Cached OAuth token |
+| `setu.log` | Runtime logs |
+| `ca.crt` / `ca.key` | Local CA (created when HTTPS is enabled) |
+| `server.crt` / `server.key` | Server certificate signed by local CA |
+
+**Linux** (`~/.local/share/setu/`):
+
+| Path | Description |
+|---|---|
+| `config.json` | Configuration |
+| `setu.db` | Encrypted contact database (SQLCipher) |
+| `vault.json` | File-based vault (only when OS keyring is unavailable) |
+| `oauth_token.json` | Cached OAuth token |
+| `setu.log` | Runtime logs |
 
 ## Security
 
 - **SQLCipher** — AES-256 full-database encryption with `PRAGMA secure_delete = ON`
-- **OS Keyring** — DB encryption key, OAuth token, CardDAV password, and Google client secret are stored in the OS keyring (Windows Credential Manager or Linux Secret Service via the `keyring` crate)
-- **CardDAV Basic Auth** — password is auto-generated (24 alphanumeric characters) and stored in the keyring
+- **OS Keyring** — DB encryption key, OAuth token, CardDAV password, and Google client secret are stored in the OS keyring (Windows Credential Manager or Linux Secret Service)
+- **File-based vault fallback** — if no keyring service is available (e.g. no gnome-keyring), secrets are stored in `~/.local/share/setu/vault.json` with `chmod 600` permissions
+- **CardDAV Basic Auth** — password is auto-generated (24 alphanumeric characters) and stored securely
 - **Local only** — the CardDAV server binds to `127.0.0.1`, never exposed to the network
 
 ## Building from Source
@@ -228,9 +252,9 @@ The release binary is at `target/x86_64-pc-windows-gnu/release/setu.exe` (~8 MB,
 ./build_appimage.sh
 ```
 
-This builds a native Linux release binary and packages it as `Setu-x86_64.AppImage`. The script downloads `appimagetool` automatically if not present.
+This builds a native Linux release binary and packages it as `Setu-x86_64.AppImage` using `linuxdeploy` with the GTK plugin. All shared library dependencies are bundled automatically. The script downloads `linuxdeploy` on first run.
 
-Prerequisites: Rust toolchain, FUSE (for running the AppImage), and the usual Linux desktop libraries (GTK, X11/Wayland, D-Bus).
+Build prerequisites: Rust toolchain, `libgtk-3-dev`, `libdbus-1-dev`, `libxdo-dev`, `pkg-config`.
 
 ### Run Tests
 
