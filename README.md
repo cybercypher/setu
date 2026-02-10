@@ -2,7 +2,7 @@
 
 **CardDAV bridge for Google Contacts.**
 
-Setu (सेतु — Hindi for "bridge") syncs your Google Contacts and serves them over CardDAV, so any CardDAV-compatible client (Thunderbird, Outlook + CalDav Synchronizer, GNOME Contacts, etc.) can access your contacts locally.
+Setu syncs your Google Contacts and serves them over CardDAV, so any CardDAV-compatible client. I built this for OpenBubbles since I could not get google contacts to work.
 
 - Runs in the system tray on Windows and Linux
 - Syncs incrementally via the Google People API
