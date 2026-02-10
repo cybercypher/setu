@@ -110,17 +110,13 @@ jobs:
             https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
           chmod +x linuxdeploy-plugin-gtk.sh
 
-          # linuxdeploy requires the icon filename to match the Icon= entry
-          # in the desktop file (Icon=setu → setu.png).
-          cp assets/icon_preview.png setu.png
-
           OUTPUT="Setu-${{ github.ref_name }}-x86_64.AppImage" \
           DEPLOY_GTK_VERSION=3 \
           ./linuxdeploy --appimage-extract-and-run \
             --appdir Setu.AppDir \
             --executable target/release/setu \
             --desktop-file setu.desktop \
-            --icon-file setu.png \
+            --icon-file assets/setu.png \
             --plugin gtk \
             --output appimage
 
