@@ -178,9 +178,9 @@ def main():
     )
     print(f"Saved {ico_path} with sizes: {sizes}")
 
-    png_path = "assets/icon_preview.png"
+    png_path = "assets/setu.png"
     images[0].save(png_path)
-    print(f"Saved {png_path} (256x256 preview)")
+    print(f"Saved {png_path} (256x256 PNG)")
 
     # Save 32x32 raw RGBA for embedding in the settings/tray window icon
     icon_32 = draw_icon(32)
