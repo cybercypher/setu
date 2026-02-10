@@ -98,36 +98,29 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Build AppImage
+      - name: Build AppImage with linuxdeploy
         run: |
-          # Create AppDir structure
-          mkdir -p Setu.AppDir/usr/bin
-          mkdir -p Setu.AppDir/usr/share/applications
-          mkdir -p Setu.AppDir/usr/share/icons/hicolor/256x256/apps
+          # Download linuxdeploy (bundles shared libs automatically via ldd)
+          curl -fsSL -o linuxdeploy \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy
 
-          cp target/release/setu Setu.AppDir/usr/bin/setu
-          cp setu.desktop Setu.AppDir/usr/share/applications/setu.desktop
-          cp setu.desktop Setu.AppDir/setu.desktop
-          cp assets/icon_preview.png Setu.AppDir/usr/share/icons/hicolor/256x256/apps/setu.png
-          cp assets/icon_preview.png Setu.AppDir/setu.png
+          # Download GTK plugin (bundles GTK3 themes, pixbuf loaders, IM modules)
+          curl -fsSL -o linuxdeploy-plugin-gtk.sh \
+            https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          chmod +x linuxdeploy-plugin-gtk.sh
 
-          # Create AppRun
-          cat > Setu.AppDir/AppRun <<'EOF'
-          #!/bin/bash
-          SELF="$(readlink -f "$0")"
-          HERE="${SELF%/*}"
-          exec "${HERE}/usr/bin/setu" "$@"
-          EOF
-          chmod +x Setu.AppDir/AppRun
-
-          # Download appimagetool
-          curl -fsSL -o appimagetool \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool
-
-          # Build AppImage (FUSE not available in CI, use --appimage-extract-and-run)
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run Setu.AppDir \
-            "Setu-${{ github.ref_name }}-x86_64.AppImage"
+          # linuxdeploy handles: AppDir structure, dependency resolution,
+          # AppRun script with LD_LIBRARY_PATH, and final AppImage creation.
+          OUTPUT="Setu-${{ github.ref_name }}-x86_64.AppImage" \
+          DEPLOY_GTK_VERSION=3 \
+          ./linuxdeploy --appimage-extract-and-run \
+            --appdir Setu.AppDir \
+            --executable target/release/setu \
+            --desktop-file setu.desktop \
+            --icon-file assets/icon_preview.png \
+            --plugin gtk \
+            --output appimage
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
