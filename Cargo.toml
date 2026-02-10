@@ -1,6 +1,6 @@
 [package]
 name = "setu"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "CardDAV bridge for Google Contacts (with optional system tray)"
 license = "AGPL-3.0-or-later"
@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [features]
 default = ["gui"]
-gui = ["dep:tray-icon", "dep:tao", "dep:eframe"]
+gui = ["dep:tray-icon", "dep:tao", "dep:eframe", "dep:arboard"]
 
 [dependencies]
 # ── Async Runtime ──────────────────────────────────────────────
@@ -48,6 +48,7 @@ rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"]
 tray-icon = { version = "0.19", optional = true }
 tao       = { version = "0.30", optional = true }
 eframe    = { version = "0.29", default-features = false, features = ["glow", "default_fonts"], optional = true }
+arboard   = { version = "3", optional = true }
 
 # ── Serialization ─────────────────────────────────────────────
 serde      = { version = "1", features = ["derive"] }

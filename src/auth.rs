@@ -22,11 +22,40 @@ const SCOPES: &[&str] = &["https://www.googleapis.com/auth/contacts.readonly"];
 
 /// Open a URL in the default browser.
 ///
-/// Uses the `open` crate which calls the platform-native mechanism
-/// (ShellExecuteW on Windows, xdg-open on Linux).
+/// On Windows, uses the `open` crate (ShellExecuteW).
+/// On Linux, bypasses shell invocation to avoid `&` in URLs being
+/// misinterpreted — tries xdg-open, sensible-browser, then common browsers.
 pub fn open_browser(url: &str) -> Result<()> {
-    open::that(url).context("failed to open default browser")?;
-    Ok(())
+    #[cfg(target_os = "linux")]
+    {
+        let browsers = [
+            "xdg-open",
+            "sensible-browser",
+            "firefox",
+            "chromium",
+            "chromium-browser",
+            "google-chrome",
+        ];
+        for browser in &browsers {
+            // Pass URL as a direct argument (no shell) so & is not mangled.
+            if std::process::Command::new(browser)
+                .arg(url)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+        anyhow::bail!("no browser found");
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        open::that(url).context("failed to open default browser")?;
+        Ok(())
+    }
 }
 
 // ── OAuth2 browser delegate ──────────────────────────────────────────
@@ -43,7 +72,12 @@ impl InstalledFlowDelegate for BrowserDelegate {
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
             tracing::info!("opening browser for Google sign-in");
-            open_browser(url).map_err(|e| e.to_string())?;
+            // Always print the URL so the user can open it manually if the
+            // browser launch fails (common in containers / webtop / WSL).
+            eprintln!("\n  Open this URL to sign in with Google:\n  {url}\n");
+            if let Err(e) = open_browser(url) {
+                tracing::warn!("could not open browser: {e:#} — copy the URL from the terminal");
+            }
             Ok(String::new())
         })
     }

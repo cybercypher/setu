@@ -6,13 +6,17 @@
 #
 set -euo pipefail
 
-echo "==> Installing mingw-w64 cross-compiler toolchain..."
+echo "==> Installing build dependencies..."
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
     gcc-mingw-w64-x86-64 \
     g++-mingw-w64-x86-64 \
     mingw-w64-tools \
-    pkg-config
+    pkg-config \
+    wixl \
+    libgtk-3-dev \
+    libdbus-1-dev \
+    libxdo-dev
 
 echo "==> Verifying cross-compiler..."
 x86_64-w64-mingw32-gcc --version

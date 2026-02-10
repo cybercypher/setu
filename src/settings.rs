@@ -56,6 +56,9 @@ pub fn show(vault: SecureVault, db_key: String) -> anyhow::Result<()> {
 fn apply_theme(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
 
+    // Start from the light theme base — on Linux egui defaults to dark
+    style.visuals = egui::Visuals::light();
+
     // Rounded corners everywhere
     style.visuals.widgets.noninteractive.rounding = egui::Rounding::same(6.0);
     style.visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
@@ -76,6 +79,9 @@ fn apply_theme(ctx: &egui::Context) {
     // Text colours
     style.visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, TEXT_PRIMARY);
     style.visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, TEXT_PRIMARY);
+
+    // Text input background (extreme_bg_color controls TextEdit fields)
+    style.visuals.extreme_bg_color = egui::Color32::WHITE;
 
     // Nicer selection colour
     style.visuals.selection.bg_fill = BLUE_PRIMARY.linear_multiply(0.25);
@@ -317,15 +323,110 @@ fn section_heading(ui: &mut egui::Ui, text: &str) {
     });
 }
 
+/// Read clipboard text, trying xclip/xsel first (more reliable on Linux),
+/// then falling back to arboard.
+fn read_clipboard() -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        // Try xclip first, then xsel — both are more reliable than X11rb in
+        // remote desktop / webtop environments.
+        if let Ok(out) = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard", "-o"])
+            .output()
+        {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout).into_owned();
+                if !text.is_empty() {
+                    return Some(text);
+                }
+            }
+        }
+        if let Ok(out) = std::process::Command::new("xsel")
+            .args(["--clipboard", "--output"])
+            .output()
+        {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout).into_owned();
+                if !text.is_empty() {
+                    return Some(text);
+                }
+            }
+        }
+    }
+    // Fallback to arboard (works well on Windows, sometimes flaky on Linux).
+    arboard::Clipboard::new()
+        .ok()
+        .and_then(|mut cb| cb.get_text().ok())
+        .filter(|t| !t.is_empty())
+}
+
+/// Write text to clipboard, trying xclip/xsel first on Linux.
+fn write_clipboard(text: &str) {
+    #[cfg(target_os = "linux")]
+    {
+        use std::io::Write;
+        if let Ok(mut child) = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+            return;
+        }
+        if let Ok(mut child) = std::process::Command::new("xsel")
+            .args(["--clipboard", "--input"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+            return;
+        }
+    }
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        let _ = cb.set_text(text);
+    }
+}
+
+/// Right-click context menu with Cut / Copy / Paste / Select All.
+fn text_context_menu(response: &egui::Response, _ui: &mut egui::Ui, value: &mut String) {
+    response.context_menu(|ui| {
+        if ui.button("Cut").clicked() {
+            write_clipboard(value);
+            value.clear();
+            ui.close_menu();
+        }
+        if ui.button("Copy").clicked() {
+            write_clipboard(value);
+            ui.close_menu();
+        }
+        if ui.button("Paste").clicked() {
+            if let Some(text) = read_clipboard() {
+                *value = text;
+            }
+            ui.close_menu();
+        }
+        if ui.button("Select All").clicked() {
+            ui.close_menu();
+        }
+    });
+}
+
 /// Labelled input field with consistent layout.
 fn labelled_field(ui: &mut egui::Ui, label: &str, value: &mut String) {
     ui.label(egui::RichText::new(label).size(12.0).color(TEXT_SECONDARY));
     ui.add_space(2.0);
-    ui.add(
+    let response = ui.add(
         egui::TextEdit::singleline(value)
             .desired_width(ui.available_width())
             .margin(egui::Margin::symmetric(8.0, 6.0)),
     );
+    text_context_menu(&response, ui, value);
 }
 
 /// Labelled password field with a show/hide toggle button.
@@ -337,7 +438,8 @@ fn password_field(ui: &mut egui::Ui, label: &str, value: &mut String, visible: &
             .desired_width(ui.available_width() - 52.0)
             .margin(egui::Margin::symmetric(8.0, 6.0))
             .password(!*visible);
-        ui.add(te);
+        let response = ui.add(te);
+        text_context_menu(&response, ui, value);
         let toggle_text = if *visible { "Hide" } else { "Show" };
         if ui
             .add(
@@ -360,11 +462,12 @@ fn password_field(ui: &mut egui::Ui, label: &str, value: &mut String, visible: &
 fn small_field(ui: &mut egui::Ui, label: &str, value: &mut String, width: f32) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).color(TEXT_SECONDARY));
-        ui.add(
+        let response = ui.add(
             egui::TextEdit::singleline(value)
                 .desired_width(width)
                 .margin(egui::Margin::symmetric(8.0, 6.0)),
         );
+        text_context_menu(&response, ui, value);
     });
 }
 
