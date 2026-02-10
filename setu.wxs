@@ -22,7 +22,10 @@
 
     <!-- ── Major Upgrade (manual — wixl lacks AllowSameVersionUpgrades) ── -->
     <!-- Detect downgrades (version > ours): block install. -->
-    <!-- Detect upgrades or same-version reinstalls: uninstall old first. -->
+    <!-- Detect upgrades or same-version reinstalls. Late removal pattern:
+         new files are installed first (overwriting in-place via same component
+         GUID), then RemoveExistingProducts cleans up the old MSI registration
+         after InstallFinalize.  Avoids the gap where setu.exe is missing. -->
     <Upgrade Id="550e8400-e29b-41d4-a716-446655440000">
       <UpgradeVersion Minimum="$(var.Version)" IncludeMinimum="no"
                       OnlyDetect="yes" Property="DOWNGRADE_DETECTED" />
@@ -74,7 +77,7 @@
     <!-- ── Install Sequence ──────────────────────────────────────── -->
     <InstallExecuteSequence>
       <Custom Action="KillSetu" Before="InstallValidate" />
-      <RemoveExistingProducts After="InstallInitialize" />
+      <RemoveExistingProducts After="InstallFinalize" />
       <Custom Action="WipeTokens" After="RemoveExistingProducts">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="DeleteAppData" After="WipeTokens">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
       <Custom Action="DeleteLocalAppData" After="DeleteAppData">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
