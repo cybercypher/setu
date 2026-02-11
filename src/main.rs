@@ -145,18 +145,34 @@ fn main() -> anyhow::Result<()> {
             }
             tracing::info!("setup complete — continuing startup");
 
-            // On Linux, install and start the systemd user service so Setu
-            // runs in the background and auto-starts on login.
+            // On Linux, try to install a systemd user service. If systemd
+            // isn't available (Docker, containers), continue in-process.
             #[cfg(target_os = "linux")]
             {
-                if let Err(e) = install_systemd_service() {
-                    tracing::warn!("could not install systemd service: {e:#}");
-                } else {
-                    eprintln!("Setu is now running as a background service.");
-                    eprintln!("  Status:  systemctl --user status setu");
-                    eprintln!("  Logs:    journalctl --user -u setu -f");
-                    eprintln!("  Stop:    systemctl --user stop setu");
-                    return Ok(());
+                match install_systemd_service() {
+                    Ok(()) => {
+                        eprintln!("Setu is now running as a background service.");
+                        eprintln!("  Status:  systemctl --user status setu");
+                        eprintln!("  Logs:    journalctl --user -u setu -f");
+                        eprintln!("  Stop:    systemctl --user stop setu");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        tracing::info!("no systemd — launching daemon: {e:#}");
+                        // Spawn a detached headless process so the settings
+                        // window can close without killing the server.
+                        if let Ok(exe) = std::env::current_exe() {
+                            let _ = std::process::Command::new(&exe)
+                                .arg("--headless")
+                                .stdin(std::process::Stdio::null())
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .spawn();
+                            eprintln!("Setu is running in the background (headless).");
+                            return Ok(());
+                        }
+                        // If spawn failed, fall through to in-process headless.
+                    }
                 }
             }
         }
@@ -418,6 +434,24 @@ fn ensure_single_instance() -> Option<()> {
 
 // ── Systemd user service management (Linux only) ─────────────────────
 
+/// Check whether a systemd user session is available.
+/// Returns false inside Docker / containers where systemd isn't PID 1.
+#[cfg(target_os = "linux")]
+fn has_systemd_user() -> bool {
+    // Standard check: /run/systemd/system exists only when systemd is the init.
+    if !std::path::Path::new("/run/systemd/system").exists() {
+        return false;
+    }
+    // Verify the user instance responds.
+    std::process::Command::new("systemctl")
+        .args(["--user", "is-system-running"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 #[cfg(target_os = "linux")]
 fn systemd_service_path() -> anyhow::Result<std::path::PathBuf> {
     let home = dirs::home_dir().context("cannot resolve home directory")?;
@@ -429,6 +463,10 @@ fn systemd_service_path() -> anyhow::Result<std::path::PathBuf> {
 #[cfg(target_os = "linux")]
 fn install_systemd_service() -> anyhow::Result<()> {
     use anyhow::Context;
+
+    if !has_systemd_user() {
+        anyhow::bail!("systemd user session not available (container or non-systemd init)");
+    }
 
     let exe = std::env::current_exe().context("cannot resolve current executable")?;
     let exe_path = exe.display();
@@ -455,12 +493,9 @@ fn install_systemd_service() -> anyhow::Result<()> {
     tracing::info!("installed systemd service at {}", service_path.display());
 
     // Reload systemd, enable, and start the service.
-    let status = std::process::Command::new("systemctl")
+    let _ = std::process::Command::new("systemctl")
         .args(["--user", "daemon-reload"])
         .status();
-    if let Err(e) = status {
-        tracing::warn!("systemctl daemon-reload failed: {e}");
-    }
 
     let status = std::process::Command::new("systemctl")
         .args(["--user", "enable", "--now", "setu"])
@@ -469,13 +504,10 @@ fn install_systemd_service() -> anyhow::Result<()> {
 
     if status.success() {
         tracing::info!("setu service enabled and started");
-        eprintln!("Setu service installed and started.");
+        Ok(())
     } else {
-        tracing::warn!("systemctl enable --now exited with {status}");
-        eprintln!("Service file installed but could not start. Check: systemctl --user status setu");
+        anyhow::bail!("systemctl enable --now failed (exit {})", status);
     }
-
-    Ok(())
 }
 
 #[cfg(target_os = "linux")]
